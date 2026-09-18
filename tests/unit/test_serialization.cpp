@@ -56,6 +56,40 @@ TEST(CaptureInfoSerialization, BasicFields) {
     EXPECT_TRUE(j["gpus"].is_array());
 }
 
+TEST(SessionStatusSerialization, RemoteFields) {
+    core::SessionStatus s;
+    s.isOpen = true;
+    s.capturePath = "phone.rdc";
+    s.api = core::GraphicsApi::Vulkan;
+    s.currentEventId = 12;
+    s.totalEvents = 40;
+    s.remoteHost = "adb://ABC123";
+    s.remoteReplay = true;
+    auto j = mcp::to_json(s);
+    EXPECT_EQ(j["isOpen"], true);
+    EXPECT_EQ(j["remoteHost"], "adb://ABC123");
+    EXPECT_EQ(j["remoteReplay"], true);
+    EXPECT_EQ(j["totalEvents"], 40);
+}
+
+TEST(RemoteDeviceSerialization, BasicFields) {
+    core::RemoteDevice d;
+    d.host = "adb://ABC123";
+    d.protocol = "adb";
+    d.name = "Pixel 8";
+    d.supported = true;
+    d.serverRunning = true;
+    d.busy = false;
+    d.status = "ready";
+    auto j = mcp::to_json(d);
+    EXPECT_EQ(j["host"], "adb://ABC123");
+    EXPECT_EQ(j["protocol"], "adb");
+    EXPECT_EQ(j["name"], "Pixel 8");
+    EXPECT_EQ(j["supported"], true);
+    EXPECT_EQ(j["serverRunning"], true);
+    EXPECT_EQ(j["status"], "ready");
+}
+
 TEST(EventInfoSerialization, WithOutputs) {
     core::EventInfo e;
     e.eventId = 42;

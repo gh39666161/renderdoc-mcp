@@ -45,6 +45,18 @@ struct SessionStatus {
     GraphicsApi api = GraphicsApi::Unknown;
     uint32_t currentEventId = 0;
     uint32_t totalEvents = 0;
+    std::string remoteHost;
+    bool remoteReplay = false;
+};
+
+struct RemoteDevice {
+    std::string host;          // e.g. "adb://SERIAL"
+    std::string protocol;      // e.g. "adb"
+    std::string name;          // friendly device name
+    bool supported = false;
+    bool serverRunning = false;
+    bool busy = false;
+    std::string status;
 };
 
 // --- Events ---

@@ -29,6 +29,7 @@ core::ShaderStage parseShaderStage(const std::string& str);
 // Struct -> JSON serializers
 nlohmann::json to_json(const core::CaptureInfo& info);
 nlohmann::json to_json(const core::SessionStatus& status);
+nlohmann::json to_json(const core::RemoteDevice& device);
 nlohmann::json to_json(const core::EventInfo& event);
 nlohmann::json to_json(const core::PipelineState& state);
 nlohmann::json to_json(const core::StageBindings& bindings);

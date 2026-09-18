@@ -75,8 +75,14 @@ double parseDouble(const std::string& str, const std::string& flagName) {
 }
 
 void printUsage(const char* argv0) {
-    std::cerr << "Usage: " << argv0 << " <capture.rdc> <command> [options]\n\n"
+    std::cerr << "Usage: " << argv0 << " <capture.rdc> <command> [options]\n"
+              << "       " << argv0 << " devices\n"
+              << "       " << argv0 << " connect HOST\n\n"
+              << "Global options:\n"
+              << "  --remote HOST   Replay on a phone/remote server (adb://SERIAL, serial, or host:port)\n\n"
               << "Commands:\n"
+              << "  devices\n"
+              << "  connect HOST    Start/connect RenderDoc remote server on a device\n"
               << "  info\n"
               << "  events [--filter TEXT]\n"
               << "  draws  [--filter TEXT]\n"
@@ -118,10 +124,53 @@ Args parseArgs(int argc, char* argv[]) {
 
     Args a;
 
+    int start = 1;
+    if (start < argc) {
+        std::string tok = argv[start];
+        if ((tok == "--remote" || tok == "--device" || tok == "-R") && start + 1 < argc) {
+            a.remoteHost = argv[start + 1];
+            start += 2;
+        }
+    }
+    if (start >= argc) {
+        printUsage(argv[0]);
+        std::exit(1);
+    }
+
+    auto parseRemoteFlag = [&](int& i, int argc, char* argv[]) -> bool {
+        std::string tok = argv[i];
+        if ((tok == "--remote" || tok == "--device" || tok == "-R") && i + 1 < argc) {
+            a.remoteHost = argv[++i];
+            return true;
+        }
+        return false;
+    };
+
+    // Special case: "devices" lists connected Android / remote hosts
+    if (std::string(argv[start]) == "devices") {
+        a.command = "devices";
+        return a;
+    }
+
+    // Special case: "connect HOST" starts/connects a remote server
+    if (std::string(argv[start]) == "connect") {
+        a.command = "connect";
+        int i = start + 1;
+        while (i < argc) {
+            if (parseRemoteFlag(i, argc, argv)) {
+                ++i;
+                continue;
+            }
+            a.positional.push_back(argv[i]);
+            ++i;
+        }
+        return a;
+    }
+
     // Special case: "capture" command doesn't take a .rdc as first arg
-    if (std::string(argv[1]) == "capture") {
+    if (std::string(argv[start]) == "capture") {
         a.command = "capture";
-        int i = 2;
+        int i = start + 1;
         while (i < argc) {
             std::string tok = argv[i];
             if ((tok == "-w" || tok == "--working-dir") && i + 1 < argc) {
@@ -132,6 +181,8 @@ Args parseArgs(int argc, char* argv[]) {
                 a.delayFrames = parseUint32(argv[++i], "--delay-frames");
             } else if ((tok == "-o" || tok == "--output") && i + 1 < argc) {
                 a.outputDir = argv[++i];
+            } else if ((tok == "--remote" || tok == "--device" || tok == "-R") && i + 1 < argc) {
+                a.remoteHost = argv[++i];
             } else {
                 a.positional.push_back(tok);
             }
@@ -141,19 +192,21 @@ Args parseArgs(int argc, char* argv[]) {
     }
 
     // Standard commands: <capture.rdc> <command> [options]
-    if (argc < 3) {
+    if (argc < start + 2) {
         printUsage(argv[0]);
         std::exit(1);
     }
 
-    a.capturePath = argv[1];
-    a.command     = argv[2];
+    a.capturePath = argv[start];
+    a.command     = argv[start + 1];
 
-    int i = 3;
+    int i = start + 2;
     while (i < argc) {
         std::string tok = argv[i];
         if ((tok == "-e" || tok == "--event") && i + 1 < argc) {
             a.eventId = parseUint32(argv[++i], "-e/--event");
+        } else if ((tok == "--remote" || tok == "--device" || tok == "-R") && i + 1 < argc) {
+            a.remoteHost = argv[++i];
         } else if (tok == "--filter" && i + 1 < argc) {
             a.filter = argv[++i];
         } else if (tok == "--type" && i + 1 < argc) {

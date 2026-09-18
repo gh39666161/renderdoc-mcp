@@ -10,6 +10,7 @@ namespace renderdoc::cli {
 struct Args {
     std::string capturePath;
     std::string command;
+    std::string remoteHost;
     std::vector<std::string> positional;
     std::optional<uint32_t> eventId;
     std::string filter;

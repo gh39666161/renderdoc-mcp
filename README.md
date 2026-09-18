@@ -8,7 +8,7 @@
 
 ---
 
-renderdoc-mcp is an MCP server and CLI that wraps the RenderDoc replay API into **59 structured tools**, letting AI assistants (Claude, Codex, etc.) open `.rdc` captures, inspect GPU frames, debug shaders/pixels, compare captures, and export evidence — all without manual UI.
+renderdoc-mcp is an MCP server and CLI that wraps the RenderDoc replay API into **62 structured tools**, letting AI assistants (Claude, Codex, etc.) open `.rdc` captures, inspect GPU frames, debug shaders/pixels, compare captures, replay on Android devices, and export evidence — all without manual UI.
 
 ## Demo
 
@@ -21,6 +21,7 @@ renderdoc-mcp is an MCP server and CLI that wraps the RenderDoc replay API into 
 | Area | What you can do |
 |------|----------------|
 | Session & Capture | Open captures, live-capture frames, inspect metadata |
+| Remote / Android | List adb devices, start the on-device remote server, replay captures on the phone |
 | Frame Navigation | List events/draws, jump to any event |
 | Pipeline & Shaders | Inspect pipeline state, bindings, shader source, constant buffers |
 | Resources & Passes | Analyze frame structure, pass dependencies, resource usage |
@@ -64,6 +65,21 @@ args = []
   }
 }
 ```
+
+## Android / remote replay
+
+Mobile GLES/Vulkan captures often cannot be replayed on a desktop GPU. Connect a phone over USB (or wireless adb), then replay on the device:
+
+```bash
+# list phones RenderDoc can see (requires adb in PATH)
+renderdoc-cli devices
+
+# start org.renderdoc.renderdoccmd on the phone and open a capture there
+renderdoc-cli capture.rdc info --remote adb://SERIAL
+# SERIAL can also be passed as --remote SERIAL
+```
+
+MCP tools: `list_devices`, `connect_device`, `open_capture` with `remoteHost`, `disconnect_device`.
 
 ## Build From Source
 

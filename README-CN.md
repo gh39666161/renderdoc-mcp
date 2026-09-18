@@ -8,7 +8,7 @@
 
 ---
 
-renderdoc-mcp 是一个基于 RenderDoc Replay API 的 MCP Server 和 CLI，提供 **59 个结构化工具**，让 AI 助手（Claude、Codex 等）可以直接打开 `.rdc` 抓帧、分析 GPU 帧、调试 Shader/像素、对比抓帧、导出证据 — 无需手动操作 UI。
+renderdoc-mcp 是一个基于 RenderDoc Replay API 的 MCP Server 和 CLI，提供 **62 个结构化工具**，让 AI 助手（Claude、Codex 等）可以直接打开 `.rdc` 抓帧、分析 GPU 帧、调试 Shader/像素、对比抓帧、在手机上 replay、导出证据 — 无需手动操作 UI。
 
 ## 演示
 
@@ -21,6 +21,7 @@ renderdoc-mcp 是一个基于 RenderDoc Replay API 的 MCP Server 和 CLI，提�
 | 模块 | 能力 |
 |------|------|
 | 会话与抓帧 | 打开抓帧、实时抓帧、查看元信息 |
+| 远程 / Android | 列出 adb 设备、启动手机端 remote server、在真机上 replay 抓帧 |
 | 帧导航 | 列出事件/draw call、跳转到任意事件 |
 | 管线与 Shader | 查看管线状态、绑定、Shader 源码、常量缓冲区 |
 | 资源与 Pass | 分析帧结构、pass 依赖、资源使用情况 |
@@ -64,6 +65,21 @@ args = []
   }
 }
 ```
+
+## Android / 远程 Replay
+
+手机 GLES/Vulkan 抓帧通常无法在桌面 GPU 上 replay。用 USB（或无线 adb）连接手机后，在设备上 replay：
+
+```bash
+# 列出 RenderDoc 能看到的手机（需要 adb 在 PATH 中）
+renderdoc-cli devices
+
+# 在手机上启动 org.renderdoc.renderdoccmd 并打开抓帧
+renderdoc-cli capture.rdc info --remote adb://SERIAL
+# SERIAL 也可以写成 --remote SERIAL
+```
+
+MCP 工具：`list_devices`、`connect_device`、`open_capture` 的 `remoteHost` 参数、`disconnect_device`。
 
 ## 从源码构建
 

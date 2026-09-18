@@ -67,6 +67,33 @@ static std::string stageName(ShaderStage s) {
 // Command implementations
 // ---------------------------------------------------------------------------
 
+static void cmdDevices(Session& session) {
+    auto devices = session.listDevices();
+    if (devices.empty()) {
+        std::cout << "No remote devices found.\n"
+                  << "Connect an Android phone with USB debugging enabled and adb in PATH.\n";
+        return;
+    }
+    std::cout << "HOST\tNAME\tSUPPORTED\tSERVER\tSTATUS\n";
+    for (const auto& d : devices) {
+        std::cout << d.host << "\t"
+                  << d.name << "\t"
+                  << (d.supported ? "yes" : "no") << "\t"
+                  << (d.serverRunning ? (d.busy ? "busy" : "running") : "offline") << "\t"
+                  << d.status << "\n";
+    }
+    std::cout << "# " << devices.size() << " device(s)\n";
+}
+
+static void cmdConnect(Session& session, const std::string& host) {
+    std::cerr << "Connecting to " << host << "...\n";
+    auto d = session.connectDevice(host, true);
+    std::cout << "Connected: " << d.host << "\n"
+              << "Name:      " << d.name << "\n"
+              << "Protocol:  " << d.protocol << "\n"
+              << "Status:    " << d.status << "\n";
+}
+
 static void cmdInfo(Session& session) {
     CaptureInfo info = getCaptureInfo(session);
 
@@ -77,7 +104,8 @@ static void cmdInfo(Session& session) {
               << "Total draws:  " << info.totalDraws << "\n"
               << "Machine:      " << info.machineIdent << "\n"
               << "Driver:       " << info.driverName << "\n"
-              << "Callstacks:   " << (info.hasCallstacks ? "yes" : "no") << "\n";
+              << "Callstacks:   " << (info.hasCallstacks ? "yes" : "no") << "\n"
+              << "Remote:       " << (session.isRemoteReplay() ? session.remoteHost() : "(local)") << "\n";
 
     if (!info.gpus.empty()) {
         std::cout << "GPUs:\n";
@@ -1149,6 +1177,24 @@ int main(int argc, char* argv[]) {
     Session session;
 
     try {
+        if (args.command == "devices") {
+            cmdDevices(session);
+            return 0;
+        }
+
+        if (args.command == "connect") {
+            std::string host = args.remoteHost;
+            if (host.empty() && !args.positional.empty())
+                host = args.positional[0];
+            if (host.empty()) {
+                std::cerr << "error: 'connect' requires a device host (adb://SERIAL or serial)\n";
+                return 1;
+            }
+            cmdConnect(session, host);
+            session.disconnectDevice();
+            return 0;
+        }
+
         // capture command: first arg is exe path, not a .rdc file
         if (args.command == "capture") {
             if (args.positional.empty()) {
@@ -1162,7 +1208,10 @@ int main(int argc, char* argv[]) {
         }
 
         // All other commands require opening a capture first
-        session.open(args.capturePath);
+        if (!args.remoteHost.empty())
+            session.open(args.capturePath, args.remoteHost);
+        else
+            session.open(args.capturePath);
     } catch (const CoreError& e) {
         std::cerr << "error: " << e.what() << "\n";
         return 1;

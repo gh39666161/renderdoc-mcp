@@ -43,8 +43,14 @@ void Session::ensureReplayInitialized() {}
 void Session::closeCurrent() {}
 void Session::close() {}
 CaptureInfo Session::open(const std::string&) { return {}; }
+CaptureInfo Session::open(const std::string&, const std::string&) { return {}; }
 SessionStatus Session::status() const { return {}; }
 bool Session::isOpen() const { return false; }
+std::vector<RemoteDevice> Session::listDevices() { return {}; }
+RemoteDevice Session::connectDevice(const std::string&, bool) { return {}; }
+void Session::disconnectDevice() {}
+bool Session::isRemoteReplay() const { return false; }
+const std::string& Session::remoteHost() const { static std::string e; return e; }
 IReplayController* Session::controller() const {
     throw CoreError(CoreError::Code::NoCaptureOpen, "No capture is currently open");
 }

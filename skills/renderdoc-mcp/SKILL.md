@@ -31,10 +31,18 @@ From file: call `open_capture` with the `.rdc` path.
 
 From app: call `capture_frame` to launch the app, inject RenderDoc, capture a frame, and auto-open it.
 
+From a phone: mobile GLES/Vulkan captures usually cannot replay on desktop. First call `list_devices` (USB debugging + adb in PATH), then either:
+
+- `connect_device` with `host` = `adb://SERIAL` (or the serial), then `open_capture` with the `.rdc` path
+- or `open_capture` with both `path` and `remoteHost`
+
+This copies the capture to the device and proxies replay through RenderDoc's remote server (`org.renderdoc.renderdoccmd`). Wireless adb serials must be passed as `adb://IP:PORT`.
+
 Verification: check the returned event count. If it is `0`, the capture is empty and you should report that immediately.
 
 Error recovery:
 - If `open_capture` fails, verify the path exists and points to a valid `.rdc` file.
+- If remote replay fails, run `list_devices`, confirm the phone is authorized, and retry `connect_device`. A desktop GPU mismatch is expected for many Android captures — use remote replay instead of local.
 - If `capture_frame` fails, check the executable path, whether the app needs admin privileges, whether it exits immediately, and whether `delayFrames` should be increased.
 
 ### Initial Context Gathering

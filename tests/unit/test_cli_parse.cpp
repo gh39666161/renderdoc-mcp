@@ -201,4 +201,37 @@ TEST(ParseArgs, DefaultValues) {
     EXPECT_EQ(a.format, "obj");
     EXPECT_EQ(a.minSeverity, "high");
     EXPECT_DOUBLE_EQ(a.threshold, 0.0);
+    EXPECT_TRUE(a.remoteHost.empty());
+}
+
+TEST(ParseArgs, DevicesCommand) {
+    auto a = parse({"cli", "devices"});
+    EXPECT_EQ(a.command, "devices");
+    EXPECT_TRUE(a.capturePath.empty());
+}
+
+TEST(ParseArgs, ConnectCommand) {
+    auto a = parse({"cli", "connect", "adb://ABC123"});
+    EXPECT_EQ(a.command, "connect");
+    ASSERT_EQ(a.positional.size(), 1u);
+    EXPECT_EQ(a.positional[0], "adb://ABC123");
+}
+
+TEST(ParseArgs, RemoteFlagAfterCommand) {
+    auto a = parse({"cli", "test.rdc", "info", "--remote", "adb://ABC123"});
+    EXPECT_EQ(a.command, "info");
+    EXPECT_EQ(a.capturePath, "test.rdc");
+    EXPECT_EQ(a.remoteHost, "adb://ABC123");
+}
+
+TEST(ParseArgs, RemoteFlagBeforeCommand) {
+    auto a = parse({"cli", "--remote", "SERIAL", "test.rdc", "info"});
+    EXPECT_EQ(a.command, "info");
+    EXPECT_EQ(a.capturePath, "test.rdc");
+    EXPECT_EQ(a.remoteHost, "SERIAL");
+}
+
+TEST(ParseArgs, DeviceAliasFlag) {
+    auto a = parse({"cli", "test.rdc", "pipeline", "-R", "adb://PHONE"});
+    EXPECT_EQ(a.remoteHost, "adb://PHONE");
 }
