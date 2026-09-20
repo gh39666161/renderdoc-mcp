@@ -292,6 +292,37 @@ CaptureInfo Session::open(const std::string& path) {
     return open(path, m_remoteHost);
 }
 
+CaptureInfo Session::openRemotePath(const std::string& devicePath,
+                                    const std::string& remoteHost) {
+    ensureReplayInitialized();
+    closeCurrent();
+
+    if (!remoteHost.empty()) {
+        std::string resolved = normalizeRemoteHost(remoteHost);
+        if (resolved != m_remoteHost)
+            connectDevice(resolved, true);
+    }
+
+    if (!m_remote) {
+        throw CoreError(CoreError::Code::RemoteConnectionFailed,
+                        "openRemotePath requires a connected remote device");
+    }
+
+    ReplayOptions opts;
+    auto [replayStatus, controller] =
+        m_remote->OpenCapture(IRemoteServer::NoPreference,
+                              rdcstr(devicePath.c_str()), opts, nullptr);
+    if (!replayStatus.OK() || !controller) {
+        throw CoreError(CoreError::Code::ReplayInitFailed,
+                        "Failed to open remote replay of '" + devicePath + "' on " +
+                        m_remoteHost + ": " + toStd(replayStatus.Message()));
+    }
+
+    m_controller = controller;
+    m_capturePath = devicePath;
+    return gatherCaptureInfo(devicePath);
+}
+
 CaptureInfo Session::open(const std::string& path, const std::string& remoteHost) {
     ensureReplayInitialized();
     closeCurrent();

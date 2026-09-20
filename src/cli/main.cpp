@@ -1,4 +1,4 @@
-// renderdoc-cli — one-shot compound-command CLI
+// renderdoc-cli �?one-shot compound-command CLI
 
 #include "cli/cli_parse.h"
 #include "core/capture.h"
@@ -27,6 +27,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -196,6 +197,36 @@ static void cmdPipeline(Session& session, std::optional<uint32_t> eid) {
                       << vp.minDepth << "\t"
                       << vp.maxDepth << "\n";
         }
+        std::cout << "\n";
+    }
+
+    // Bound textures / buffers per stage, with the resource actually bound.
+    auto bindings = getBindings(session, eid);
+    for (const auto& [stage, sb] : bindings) {
+        bool any = false;
+        for (const auto& r : sb.readOnlyResources)
+            if (r.boundResourceId != 0) { any = true; break; }
+        if (!any)
+            for (const auto& r : sb.readWriteResources)
+                if (r.boundResourceId != 0) { any = true; break; }
+        if (!any)
+            continue;
+
+        std::cout << "Bound resources (" << stageName(stage) << "):\n"
+                  << "Slot\tDeclaredName\tResourceID\tResourceName\n";
+        for (const auto& r : sb.readOnlyResources) {
+            if (r.boundResourceId == 0)
+                continue;
+            std::cout << r.bindPoint << "\t" << r.name << "\t"
+                      << r.boundResourceId << "\t" << r.boundResourceName << "\n";
+        }
+        for (const auto& r : sb.readWriteResources) {
+            if (r.boundResourceId == 0)
+                continue;
+            std::cout << r.bindPoint << "\t" << r.name << "\t"
+                      << r.boundResourceId << "\t" << r.boundResourceName << " (rw)\n";
+        }
+        std::cout << "\n";
     }
 }
 
@@ -345,7 +376,7 @@ static void cmdPickPixel(Session& session, const std::vector<std::string>& posit
 static void cmdDebug(Session& session, const std::vector<std::string>& positional,
                      std::optional<uint32_t> eid, bool trace,
                      uint32_t instance, uint32_t primitive,
-                     uint32_t index, uint32_t view) {
+                     uint32_t index, uint32_t view, bool vars) {
     if (positional.empty()) {
         std::cerr << "error: 'debug' requires subcommand: pixel|vertex|thread\n";
         std::exit(1);
@@ -365,14 +396,14 @@ static void cmdDebug(Session& session, const std::vector<std::string>& positiona
         }
         uint32_t x = static_cast<uint32_t>(std::stoul(positional[1]));
         uint32_t y = static_cast<uint32_t>(std::stoul(positional[2]));
-        result = debugPixel(session, *eid, x, y, trace, primitive);
+        result = debugPixel(session, *eid, x, y, trace, primitive, vars);
     } else if (sub == "vertex") {
         if (positional.size() < 2) {
             std::cerr << "error: 'debug vertex' requires VTX_ID\n";
             std::exit(1);
         }
         uint32_t vtx = static_cast<uint32_t>(std::stoul(positional[1]));
-        result = debugVertex(session, *eid, vtx, trace, instance, index, view);
+        result = debugVertex(session, *eid, vtx, trace, instance, index, view, vars);
     } else if (sub == "thread") {
         if (positional.size() < 7) {
             std::cerr << "error: 'debug thread' requires GX GY GZ TX TY TZ\n";
@@ -384,7 +415,7 @@ static void cmdDebug(Session& session, const std::vector<std::string>& positiona
         uint32_t tx = static_cast<uint32_t>(std::stoul(positional[4]));
         uint32_t ty = static_cast<uint32_t>(std::stoul(positional[5]));
         uint32_t tz = static_cast<uint32_t>(std::stoul(positional[6]));
-        result = debugThread(session, *eid, gx, gy, gz, tx, ty, tz, trace);
+        result = debugThread(session, *eid, gx, gy, gz, tx, ty, tz, trace, vars);
     } else {
         std::cerr << "error: unknown debug subcommand '" << sub << "'\n";
         std::exit(1);
@@ -414,6 +445,26 @@ static void cmdDebug(Session& session, const std::vector<std::string>& positiona
 
     printVars("Inputs", result.inputs);
     printVars("Outputs", result.outputs);
+
+    if (!result.variables.empty()) {
+        std::cout << "\nVariables (" << result.variables.size()
+                  << ", final value, first-write order):\n";
+        for (const auto& v : result.variables) {
+            std::cout << "  " << v.name << "\t" << v.type
+                      << "\t" << v.rows << "x" << v.cols << "\t";
+            if (!v.floatValues.empty()) {
+                for (size_t i = 0; i < v.floatValues.size(); i++)
+                    std::cout << (i ? ", " : "") << v.floatValues[i];
+            } else if (!v.intValues.empty()) {
+                for (size_t i = 0; i < v.intValues.size(); i++)
+                    std::cout << (i ? ", " : "") << v.intValues[i];
+            } else if (!v.uintValues.empty()) {
+                for (size_t i = 0; i < v.uintValues.size(); i++)
+                    std::cout << (i ? ", " : "") << v.uintValues[i];
+            }
+            std::cout << "\n";
+        }
+    }
 
     if (!result.trace.empty()) {
         std::cout << "\nTrace (" << result.trace.size() << " steps):\n";
@@ -754,7 +805,7 @@ static int cmdAssertClean(Session& session, const std::string& minSeverity) {
 }
 
 // ---------------------------------------------------------------------------
-// diff command (standalone — takes two .rdc files, no shared session)
+// diff command (standalone �?takes two .rdc files, no shared session)
 // ---------------------------------------------------------------------------
 
 static std::string diffStatusStr(DiffStatus s) {
@@ -821,7 +872,7 @@ static int cmdDiff(int argc, char* argv[]) {
     }
 
     try {
-        // DiffSession does not own replay init — prime it via a temporary Session
+        // DiffSession does not own replay init �?prime it via a temporary Session
         Session initSession;
         initSession.ensureReplayInitialized();
 
@@ -1135,10 +1186,10 @@ static void cmdCBuffer(Session& session, const std::string& stageStr,
               << ",\n  \"byteSize\": " << contents.byteSize
               << ",\n  \"variables\": [\n";
 
-    // Simple flat print for now (nested structs not deeply formatted)
-    for (size_t i = 0; i < contents.variables.size(); ++i) {
-        const auto& v = contents.variables[i];
-        std::cout << "    {\"name\": \"" << v.name
+    // Recursively print variables so nested structs/arrays show their values.
+    std::function<void(const ShaderVar&, const std::string&)> printVar =
+        [&](const ShaderVar& v, const std::string& indent) {
+        std::cout << indent << "{\"name\": \"" << v.name
                   << "\", \"type\": \"" << v.typeName << "\"";
         if (!v.floatValues.empty()) {
             std::cout << ", \"values\": [";
@@ -1156,9 +1207,19 @@ static void cmdCBuffer(Session& session, const std::string& stageStr,
                 std::cout << v.uintValues[j] << (j + 1 < v.uintValues.size() ? ", " : "");
             std::cout << "]";
         } else if (!v.members.empty()) {
-            std::cout << ", \"memberCount\": " << v.members.size();
+            std::cout << ", \"members\": [\n";
+            for (size_t j = 0; j < v.members.size(); ++j) {
+                printVar(v.members[j], indent + "  ");
+                std::cout << (j + 1 < v.members.size() ? "," : "") << "\n";
+            }
+            std::cout << indent << "]";
         }
-        std::cout << "}" << (i + 1 < contents.variables.size() ? "," : "") << "\n";
+        std::cout << "}";
+    };
+
+    for (size_t i = 0; i < contents.variables.size(); ++i) {
+        printVar(contents.variables[i], "    ");
+        std::cout << (i + 1 < contents.variables.size() ? "," : "") << "\n";
     }
     std::cout << "  ]\n}\n";
 }
@@ -1208,10 +1269,17 @@ int main(int argc, char* argv[]) {
         }
 
         // All other commands require opening a capture first
-        if (!args.remoteHost.empty())
+        if (!args.remotePath.empty()) {
+            if (args.remoteHost.empty()) {
+                std::cerr << "error: --remote-path requires --remote HOST\n";
+                return 1;
+            }
+            session.openRemotePath(args.remotePath, args.remoteHost);
+        } else if (!args.remoteHost.empty()) {
             session.open(args.capturePath, args.remoteHost);
-        else
+        } else {
             session.open(args.capturePath);
+        }
     } catch (const CoreError& e) {
         std::cerr << "error: " << e.what() << "\n";
         return 1;
@@ -1244,7 +1312,7 @@ int main(int argc, char* argv[]) {
             cmdPickPixel(session, args.positional, args.targetIndex, args.eventId);
         } else if (cmd == "debug") {
             cmdDebug(session, args.positional, args.eventId, args.trace,
-                     args.instance, args.primitive, args.index, args.view);
+                     args.instance, args.primitive, args.index, args.view, args.vars);
         } else if (cmd == "tex-stats") {
             cmdTexStats(session, args.positional, args.eventId,
                         args.mipLevel, args.sliceIndex, args.histogram);

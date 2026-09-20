@@ -112,11 +112,12 @@ struct DebugLoopResult {
     uint32_t totalSteps = 0;
     std::vector<DebugVariable> inputs;
     std::vector<DebugVariable> outputs;
+    std::vector<DebugVariable> variables;
     std::vector<DebugStep> trace;
 };
 
 DebugLoopResult runDebugLoop(IReplayController* ctrl, ShaderDebugTrace* dbgTrace,
-                             bool fullTrace) {
+                             bool fullTrace, bool captureVariables) {
     DebugLoopResult result;
     ShaderDebugger* debugger = dbgTrace->debugger;
     const auto& instInfo = dbgTrace->instInfo;
@@ -126,6 +127,10 @@ DebugLoopResult runDebugLoop(IReplayController* ctrl, ShaderDebugTrace* dbgTrace
         result.inputs.push_back(convertVariable(dbgTrace->inputs[i]));
 
     std::vector<ShaderVariableChange> lastChanges;
+    // Track the final value of every named variable we see change, so that
+    // shader outputs (SV_Target*/out.var.*) are reported instead of only
+    // whatever happened to change in the very last step.
+    std::vector<std::pair<std::string, ::ShaderVariable>> finalValues;
     uint32_t stepCount = 0;
 
     while (stepCount < MAX_DEBUG_STEPS) {
@@ -140,6 +145,26 @@ DebugLoopResult runDebugLoop(IReplayController* ctrl, ShaderDebugTrace* dbgTrace
                 lastChanges.clear();
                 for (size_t c = 0; c < state.changes.size(); c++)
                     lastChanges.push_back(state.changes[c]);
+            }
+
+            // Remember the latest value of every named variable, so shader
+            // outputs can be reported even if they changed earlier on, and so
+            // callers can diff intermediates between two captures.
+            for (size_t c = 0; c < state.changes.size(); c++) {
+                const ::ShaderVariable& after = state.changes[c].after;
+                std::string name(after.name.c_str());
+                if (name.empty())
+                    continue;
+                bool found = false;
+                for (auto& fv : finalValues) {
+                    if (fv.first == name) {
+                        fv.second = after;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    finalValues.emplace_back(std::move(name), after);
             }
 
             if (fullTrace) {
@@ -166,8 +191,27 @@ DebugLoopResult runDebugLoop(IReplayController* ctrl, ShaderDebugTrace* dbgTrace
 
     result.totalSteps = stepCount;
 
-    for (const auto& lc : lastChanges)
-        result.outputs.push_back(convertVariable(lc.after));
+    if (captureVariables) {
+        result.variables.reserve(finalValues.size());
+        for (const auto& fv : finalValues)
+            result.variables.push_back(convertVariable(fv.second));
+    }
+
+    // Prefer real shader outputs (SV_Target*/out.var.*) when present.
+    for (const auto& fv : finalValues) {
+        const std::string& n = fv.first;
+        if (n.find("SV_Target") != std::string::npos ||
+            n.find("out.var") != std::string::npos ||
+            n.find("SV_Depth") != std::string::npos) {
+            result.outputs.push_back(convertVariable(fv.second));
+        }
+    }
+
+    // Fall back to the last step's changes if no named outputs were seen.
+    if (result.outputs.empty()) {
+        for (const auto& lc : lastChanges)
+            result.outputs.push_back(convertVariable(lc.after));
+    }
 
     return result;
 }
@@ -179,7 +223,8 @@ ShaderDebugResult debugPixel(
     uint32_t eventId,
     uint32_t x, uint32_t y,
     bool fullTrace,
-    uint32_t primitive) {
+    uint32_t primitive,
+    bool captureVariables) {
 
     auto* ctrl = session.controller();
     ctrl->SetFrameEvent(eventId, true);
@@ -202,10 +247,11 @@ ShaderDebugResult debugPixel(
     result.stage   = shaderStageToStr(trace->stage);
 
     try {
-        auto loopResult = runDebugLoop(ctrl, trace, fullTrace);
+        auto loopResult = runDebugLoop(ctrl, trace, fullTrace, captureVariables);
         result.totalSteps = loopResult.totalSteps;
         result.inputs     = std::move(loopResult.inputs);
         result.outputs    = std::move(loopResult.outputs);
+    result.variables  = std::move(loopResult.variables);
         result.trace      = std::move(loopResult.trace);
     } catch (...) {
         ctrl->FreeTrace(trace);
@@ -223,7 +269,8 @@ ShaderDebugResult debugVertex(
     bool fullTrace,
     uint32_t instance,
     uint32_t index,
-    uint32_t view) {
+    uint32_t view,
+    bool captureVariables) {
 
     auto* ctrl = session.controller();
     ctrl->SetFrameEvent(eventId, true);
@@ -243,10 +290,11 @@ ShaderDebugResult debugVertex(
     result.stage   = shaderStageToStr(trace->stage);
 
     try {
-        auto loopResult = runDebugLoop(ctrl, trace, fullTrace);
+        auto loopResult = runDebugLoop(ctrl, trace, fullTrace, captureVariables);
         result.totalSteps = loopResult.totalSteps;
         result.inputs     = std::move(loopResult.inputs);
         result.outputs    = std::move(loopResult.outputs);
+    result.variables  = std::move(loopResult.variables);
         result.trace      = std::move(loopResult.trace);
     } catch (...) {
         ctrl->FreeTrace(trace);
@@ -262,7 +310,8 @@ ShaderDebugResult debugThread(
     uint32_t eventId,
     uint32_t groupX, uint32_t groupY, uint32_t groupZ,
     uint32_t threadX, uint32_t threadY, uint32_t threadZ,
-    bool fullTrace) {
+    bool fullTrace,
+    bool captureVariables) {
 
     auto* ctrl = session.controller();
     ctrl->SetFrameEvent(eventId, true);
@@ -290,10 +339,11 @@ ShaderDebugResult debugThread(
     result.stage   = shaderStageToStr(trace->stage);
 
     try {
-        auto loopResult = runDebugLoop(ctrl, trace, fullTrace);
+        auto loopResult = runDebugLoop(ctrl, trace, fullTrace, captureVariables);
         result.totalSteps = loopResult.totalSteps;
         result.inputs     = std::move(loopResult.inputs);
         result.outputs    = std::move(loopResult.outputs);
+    result.variables  = std::move(loopResult.variables);
         result.trace      = std::move(loopResult.trace);
     } catch (...) {
         ctrl->FreeTrace(trace);

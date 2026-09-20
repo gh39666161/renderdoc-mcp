@@ -211,9 +211,103 @@ ShaderStageInfo getShaderStageInfo(IReplayController* ctrl, ShaderStage stage) {
     return info;
 }
 
-// Note: We pass ResourceId() / 0 / 0 for the buffer descriptor and let
-// RenderDoc's GetCBufferVariableContents resolve the actual binding internally.
-// This works across all APIs and avoids complex per-API descriptor resolution.
+// Resolve the actual backing buffer for a constant block.
+//
+// GetCBufferVariableContents needs a real buffer ResourceId whenever the block
+// is bufferBacked (true for Vulkan/D3D12 UBOs). Passing ResourceId() there
+// silently yields all-zero values. We find it by matching the descriptor
+// accesses recorded at the current event against the constant block's index.
+struct CBufferBinding {
+    ::ResourceId buffer;
+    uint64_t offset = 0;
+    uint64_t size = 0;
+};
+
+// Vulkan UNIFORM_BUFFER_DYNAMIC descriptors carry a per-bind dynamic offset
+// that is NOT reflected in the Descriptor returned by GetDescriptors. Without
+// it the fetched bytes are taken from the wrong place in the buffer, which
+// silently yields garbage/zero constants. Look it up from the Vulkan pipeline
+// state by matching the descriptor's byte offset within its store.
+uint64_t findVulkanDynamicOffset(IReplayController* ctrl,
+                                 ::ResourceId descriptorStore,
+                                 uint64_t descriptorByteOffset) {
+    const VKPipe::State* vk = ctrl->GetVulkanPipelineState();
+    if (!vk)
+        return 0;
+
+    auto scan = [&](const rdcarray<VKPipe::DescriptorSet>& sets) -> uint64_t {
+        for (const VKPipe::DescriptorSet& set : sets) {
+            if (set.descriptorSetResourceId != descriptorStore)
+                continue;
+            for (const VKPipe::DynamicOffset& dyn : set.dynamicOffsets) {
+                if (dyn.descriptorByteOffset == descriptorByteOffset)
+                    return dyn.dynamicBufferByteOffset;
+            }
+        }
+        return 0;
+    };
+
+    uint64_t off = scan(vk->graphics.descriptorSets);
+    if (off == 0)
+        off = scan(vk->compute.descriptorSets);
+    return off;
+}
+
+CBufferBinding resolveCBufferBinding(IReplayController* ctrl,
+                                     ShaderStage stage,
+                                     uint32_t cbufferIndex,
+                                     uint32_t blockByteSize) {
+    CBufferBinding out;
+
+    ::ShaderStage want = toRdcStage(stage);
+    const rdcarray<DescriptorAccess>& accesses = ctrl->GetDescriptorAccess();
+
+    for (const DescriptorAccess& acc : accesses) {
+        if (acc.stage != want)
+            continue;
+        if (CategoryForDescriptorType(acc.type) != DescriptorCategory::ConstantBlock)
+            continue;
+        if (acc.index != cbufferIndex)
+            continue;
+        if (acc.descriptorStore == ::ResourceId())
+            continue;
+
+        // DescriptorRange has a converting constructor from DescriptorAccess
+        // that also carries `type` — required for correct lookup. Building the
+        // range by hand and omitting `type` resolves the wrong descriptor.
+        rdcarray<DescriptorRange> ranges;
+        ranges.push_back(DescriptorRange(acc));
+
+        rdcarray<Descriptor> descs = ctrl->GetDescriptors(acc.descriptorStore, ranges);
+        if (descs.empty())
+            continue;
+
+        if (descs[0].resource == ::ResourceId())
+            continue;
+
+        out.buffer = descs[0].resource;
+        out.offset = descs[0].byteOffset;
+        out.size = descs[0].byteSize;
+
+        // Apply the Vulkan dynamic offset when this descriptor has one. There is
+        // no distinct DescriptorType for UNIFORM_BUFFER_DYNAMIC (it also reports
+        // as ConstantBuffer), so we simply look for a matching dynamic offset
+        // entry in the pipeline state; non-dynamic bindings have none.
+        uint64_t dynOff =
+            findVulkanDynamicOffset(ctrl, acc.descriptorStore, acc.byteOffset);
+        out.offset += dynOff;
+
+        // The descriptor range can cover the whole suballocation (or be 0 for
+        // "rest of buffer"). FillCBufferVariables parses from the start of the
+        // fetched bytes, so read exactly the block size from the resolved offset.
+        if (out.size == 0 || out.size > blockByteSize)
+            out.size = blockByteSize;
+
+        return out;
+    }
+
+    return out;
+}
 
 } // anonymous namespace
 
@@ -274,10 +368,16 @@ CBufferContents getCBufferContents(const Session& session,
     ::ShaderStage rdcStage = toRdcStage(stage);
     rdcstr entryPoint(stageInfo.entryPoint.c_str());
 
+    // bufferBacked blocks (Vulkan/D3D12 UBOs) need the real buffer ResourceId,
+    // otherwise GetCBufferVariableContents returns all zeros.
+    CBufferBinding binding;
+    if (cbMeta.bufferBacked)
+        binding = resolveCBufferBinding(ctrl, stage, cbufferIndex, cbMeta.byteSize);
+
     rdcarray<::ShaderVariable> vars = ctrl->GetCBufferVariableContents(
         stageInfo.pipelineId, stageInfo.shaderId, rdcStage,
         entryPoint, cbufferIndex,
-        ::ResourceId(), 0, 0);
+        binding.buffer, binding.offset, binding.size);
 
     // Build result
     CBufferContents result;

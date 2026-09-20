@@ -235,3 +235,33 @@ TEST(ParseArgs, DeviceAliasFlag) {
     auto a = parse({"cli", "test.rdc", "pipeline", "-R", "adb://PHONE"});
     EXPECT_EQ(a.remoteHost, "adb://PHONE");
 }
+
+// --- debug --vars ---
+
+TEST(ParseArgs, VarsFlagDefaultsFalse) {
+    auto a = parse({"cli", "test.rdc", "debug", "pixel", "10", "20", "-e", "5"});
+    EXPECT_FALSE(a.vars);
+    EXPECT_FALSE(a.trace);
+}
+
+TEST(ParseArgs, VarsFlag) {
+    auto a = parse({"cli", "test.rdc", "debug", "pixel", "10", "20", "-e", "5", "--vars"});
+    EXPECT_TRUE(a.vars);
+    EXPECT_FALSE(a.trace);
+}
+
+TEST(ParseArgs, VarsAndTraceTogether) {
+    auto a = parse({"cli", "test.rdc", "debug", "pixel", "10", "20",
+                     "-e", "5", "--vars", "--trace"});
+    EXPECT_TRUE(a.vars);
+    EXPECT_TRUE(a.trace);
+}
+
+TEST(ParseArgs, VarsFlagOnDebugVertex) {
+    auto a = parse({"cli", "test.rdc", "debug", "vertex", "7", "-e", "5", "--vars"});
+    EXPECT_TRUE(a.vars);
+    EXPECT_EQ(a.command, "debug");
+    ASSERT_EQ(a.positional.size(), 2u);
+    EXPECT_EQ(a.positional[0], "vertex");
+    EXPECT_EQ(a.positional[1], "7");
+}

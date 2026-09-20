@@ -11,6 +11,7 @@ struct Args {
     std::string capturePath;
     std::string command;
     std::string remoteHost;
+    std::string remotePath;
     std::vector<std::string> positional;
     std::optional<uint32_t> eventId;
     std::string filter;
@@ -28,6 +29,7 @@ struct Args {
     uint32_t index = 0xFFFFFFFF;
     uint32_t view = 0;
     bool trace = false;
+    bool vars = false;
     bool histogram = false;
     // Phase 2
     std::string encoding;

@@ -387,6 +387,8 @@ nlohmann::json to_json(const core::ShaderDebugResult& result) {
     j["totalSteps"] = result.totalSteps;
     j["inputs"]     = to_json_array(result.inputs);
     j["outputs"]    = to_json_array(result.outputs);
+    if (!result.variables.empty())
+        j["variables"] = to_json_array(result.variables);
     if (!result.trace.empty())
         j["trace"] = to_json_array(result.trace);
     return j;

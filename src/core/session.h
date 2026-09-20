@@ -23,6 +23,8 @@ public:
     // Public API
     CaptureInfo open(const std::string& path);
     CaptureInfo open(const std::string& path, const std::string& remoteHost);
+    // Open a capture that already exists on the remote device (skips copy).
+    CaptureInfo openRemotePath(const std::string& devicePath, const std::string& remoteHost);
     void close();
     SessionStatus status() const;
     bool isOpen() const;

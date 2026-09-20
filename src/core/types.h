@@ -76,6 +76,9 @@ struct ShaderBindingDetail {
     uint32_t bindPoint = 0;
     uint32_t byteSize = 0;
     uint32_t variableCount = 0;
+    // Actually bound resource at this slot (0 if nothing bound / not resolved).
+    ResourceId boundResourceId = 0;
+    std::string boundResourceName;
 };
 
 struct StageBindings {
@@ -331,6 +334,11 @@ struct ShaderDebugResult {
     uint32_t totalSteps = 0;
     std::vector<DebugVariable> inputs;
     std::vector<DebugVariable> outputs;
+    // Final value of every variable touched during execution, in first-write
+    // order. Populated only when requested (see debug* `captureVariables`).
+    // Useful for diffing two captures of the same shader: texture sample
+    // results, intermediate math, and outputs all show up here.
+    std::vector<DebugVariable> variables;
     std::vector<DebugStep> trace;
 };
 

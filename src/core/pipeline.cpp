@@ -9,6 +9,57 @@ namespace renderdoc::core {
 
 namespace {
 
+// Resolve which resource is actually bound to each declared shader slot.
+//
+// The reflection only gives declared names (e.g. Material_Texture2D_1). To see
+// what is really bound we walk the descriptor accesses recorded at this event
+// and read the descriptor contents.
+void resolveBoundResources(IReplayController* ctrl,
+                           ::ShaderStage stage,
+                           StageBindings& bindings) {
+    if (!ctrl)
+        return;
+
+    const rdcarray<DescriptorAccess>& accesses = ctrl->GetDescriptorAccess();
+    const auto& resources = ctrl->GetResources();
+
+    auto nameFor = [&](::ResourceId id) -> std::string {
+        for (int i = 0; i < resources.count(); i++) {
+            if (resources[i].resourceId == id)
+                return std::string(resources[i].name.c_str());
+        }
+        return {};
+    };
+
+    auto apply = [&](std::vector<ShaderBindingDetail>& list,
+                     DescriptorCategory category) {
+        for (const DescriptorAccess& acc : accesses) {
+            if (acc.stage != stage)
+                continue;
+            if (CategoryForDescriptorType(acc.type) != category)
+                continue;
+            if (acc.index >= list.size())
+                continue;
+            if (acc.descriptorStore == ::ResourceId())
+                continue;
+
+            rdcarray<DescriptorRange> ranges;
+            ranges.push_back(DescriptorRange(acc));
+
+            rdcarray<Descriptor> descs = ctrl->GetDescriptors(acc.descriptorStore, ranges);
+            if (descs.empty() || descs[0].resource == ::ResourceId())
+                continue;
+
+            ShaderBindingDetail& d = list[acc.index];
+            d.boundResourceId = toResourceId(descs[0].resource);
+            d.boundResourceName = nameFor(descs[0].resource);
+        }
+    };
+
+    apply(bindings.readOnlyResources, DescriptorCategory::ReadOnlyResource);
+    apply(bindings.readWriteResources, DescriptorCategory::ReadWriteResource);
+}
+
 // Extract StageBindings from a RenderDoc ShaderReflection pointer and resource ID.
 StageBindings extractStageBindings(const ::ShaderReflection* refl, ::ResourceId resourceId) {
     StageBindings bindings;
@@ -567,6 +618,22 @@ std::map<ShaderStage, StageBindings> getBindings(const Session& session,
         }
         default:
             break;
+    }
+
+    // Reflection only yields declared slot names; resolve what is actually
+    // bound at each slot for this event.
+    static const std::pair<ShaderStage, ::ShaderStage> kStageMap[] = {
+        {ShaderStage::Vertex, ::ShaderStage::Vertex},
+        {ShaderStage::Hull, ::ShaderStage::Hull},
+        {ShaderStage::Domain, ::ShaderStage::Domain},
+        {ShaderStage::Geometry, ::ShaderStage::Geometry},
+        {ShaderStage::Pixel, ::ShaderStage::Pixel},
+        {ShaderStage::Compute, ::ShaderStage::Compute},
+    };
+    for (const auto& [ours, theirs] : kStageMap) {
+        auto it = result.find(ours);
+        if (it != result.end())
+            resolveBoundResources(ctrl, theirs, it->second);
     }
 
     return result;

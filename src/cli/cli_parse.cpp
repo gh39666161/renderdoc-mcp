@@ -79,7 +79,8 @@ void printUsage(const char* argv0) {
               << "       " << argv0 << " devices\n"
               << "       " << argv0 << " connect HOST\n\n"
               << "Global options:\n"
-              << "  --remote HOST   Replay on a phone/remote server (adb://SERIAL, serial, or host:port)\n\n"
+              << "  --remote HOST        Replay on a phone/remote server (adb://SERIAL, serial, or host:port)\n"
+              << "  --remote-path PATH   Open a capture already present on the device (skips copy)\n\n"
               << "Commands:\n"
               << "  devices\n"
               << "  connect HOST    Start/connect RenderDoc remote server on a device\n"
@@ -93,9 +94,11 @@ void printUsage(const char* argv0) {
               << "  capture EXE [-w DIR] [-a ARGS] [-d N] [-o PATH]\n"
               << "  pixel X Y [-e EID] [--target N]\n"
               << "  pick-pixel X Y [-e EID] [--target N]\n"
-              << "  debug pixel X Y -e EID [--trace] [--primitive N]\n"
-              << "  debug vertex VTX -e EID [--trace] [--instance N] [--index N] [--view N]\n"
-              << "  debug thread GX GY GZ TX TY TZ -e EID [--trace]\n"
+              << "  debug pixel X Y -e EID [--trace] [--vars] [--primitive N]\n"
+              << "  debug vertex VTX -e EID [--trace] [--vars] [--instance N] [--index N] [--view N]\n"
+              << "  debug thread GX GY GZ TX TY TZ -e EID [--trace] [--vars]\n"
+              << "      --vars  dump final value of every shader variable (texture samples,\n"
+              << "              intermediates, outputs) - use to diff two captures\n"
               << "  tex-stats RES_ID [-e EID] [--mip N] [--slice N] [--histogram]\n"
               << "  shader-encodings\n"
               << "  shader-build FILE --stage STAGE --encoding ENC [--entry NAME]\n"
@@ -207,6 +210,8 @@ Args parseArgs(int argc, char* argv[]) {
             a.eventId = parseUint32(argv[++i], "-e/--event");
         } else if ((tok == "--remote" || tok == "--device" || tok == "-R") && i + 1 < argc) {
             a.remoteHost = argv[++i];
+        } else if (tok == "--remote-path" && i + 1 < argc) {
+            a.remotePath = argv[++i];
         } else if (tok == "--filter" && i + 1 < argc) {
             a.filter = argv[++i];
         } else if (tok == "--type" && i + 1 < argc) {
@@ -224,11 +229,17 @@ Args parseArgs(int argc, char* argv[]) {
         } else if (tok == "--primitive" && i + 1 < argc) {
             a.primitive = parseUint32(argv[++i], "--primitive");
         } else if (tok == "--index" && i + 1 < argc) {
-            a.index = parseUint32(argv[++i], "--index");
+            // --index is shared by `debug vertex` (a.index) and `cbuffer`
+            // (a.cbufferIndex); set both and let the command pick.
+            a.index = parseUint32(argv[i + 1], "--index");
+            a.cbufferIndex = a.index;
+            ++i;
         } else if (tok == "--view" && i + 1 < argc) {
             a.view = parseUint32(argv[++i], "--view");
         } else if (tok == "--trace") {
             a.trace = true;
+        } else if (tok == "--vars") {
+            a.vars = true;
         } else if (tok == "--histogram") {
             a.histogram = true;
         } else if (tok == "--encoding" && i + 1 < argc) {

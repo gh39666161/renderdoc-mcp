@@ -44,6 +44,7 @@ void Session::closeCurrent() {}
 void Session::close() {}
 CaptureInfo Session::open(const std::string&) { return {}; }
 CaptureInfo Session::open(const std::string&, const std::string&) { return {}; }
+CaptureInfo Session::openRemotePath(const std::string&, const std::string&) { return {}; }
 SessionStatus Session::status() const { return {}; }
 bool Session::isOpen() const { return false; }
 std::vector<RemoteDevice> Session::listDevices() { return {}; }

@@ -25,7 +25,7 @@ renderdoc-mcp 是一个基于 RenderDoc Replay API 的 MCP Server 和 CLI，提�
 | 帧导航 | 列出事件/draw call、跳转到任意事件 |
 | 管线与 Shader | 查看管线状态、绑定、Shader 源码、常量缓冲区 |
 | 资源与 Pass | 分析帧结构、pass 依赖、资源使用情况 |
-| 像素与 Shader 调试 | 像素历史、拾取像素、调试像素/顶点/线程 |
+| 像素与 Shader 调试 | 像素历史、拾取像素、调试像素/顶点/线程、导出所有 shader 变量值 |
 | 导出 | 渲染目标、纹理、Buffer、Mesh、快照 |
 | Diff 与断言 | 对比两次抓帧，断言像素/状态/图片用于 CI |
 
@@ -80,6 +80,22 @@ renderdoc-cli capture.rdc info --remote adb://SERIAL
 ```
 
 MCP 工具：`list_devices`、`connect_device`、`open_capture` 的 `remoteHost` 参数、`disconnect_device`。
+
+## Shader 变量导出
+
+当同一个 shader 在两次抓帧里输出不同时，导出所有 shader 变量的最终值再做 diff。
+这能看到贴图采样结果和中间计算，而不只是输入/输出：
+
+```bash
+renderdoc-cli A.rdc debug pixel 1027 170 -e 1263 --vars > vars_a.txt
+renderdoc-cli B.rdc debug pixel 1027 170 -e 1143 --vars > vars_b.txt
+```
+
+第一个出现分叉的变量就是线索 —— 贴图采样值不同说明是贴图内容/mip/流送问题，
+cbuffer 派生值不同说明是材质参数问题。
+
+MCP：`debug_pixel` / `debug_vertex` / `debug_thread` 的 `mode` 参数可选
+`summary`（默认）、`vars`、`trace`。
 
 ## 从源码构建
 

@@ -25,7 +25,7 @@ renderdoc-mcp is an MCP server and CLI that wraps the RenderDoc replay API into 
 | Frame Navigation | List events/draws, jump to any event |
 | Pipeline & Shaders | Inspect pipeline state, bindings, shader source, constant buffers |
 | Resources & Passes | Analyze frame structure, pass dependencies, resource usage |
-| Pixel & Shader Debug | Pixel history, pick pixel, debug pixel/vertex/thread |
+| Pixel & Shader Debug | Pixel history, pick pixel, debug pixel/vertex/thread, dump every shader variable |
 | Export | Render targets, textures, buffers, meshes, snapshots |
 | Diff & Assertions | Compare captures, assert pixels/state/images for CI |
 
@@ -80,6 +80,24 @@ renderdoc-cli capture.rdc info --remote adb://SERIAL
 ```
 
 MCP tools: `list_devices`, `connect_device`, `open_capture` with `remoteHost`, `disconnect_device`.
+
+## Shader variable dump
+
+When the same shader produces different output in two captures, dump the final
+value of every shader variable and diff them. This surfaces texture sample
+results and intermediate math, not just inputs/outputs:
+
+```bash
+renderdoc-cli A.rdc debug pixel 1027 170 -e 1263 --vars > vars_a.txt
+renderdoc-cli B.rdc debug pixel 1027 170 -e 1143 --vars > vars_b.txt
+```
+
+The first variable whose value diverges points at the cause — a differing
+texture sample means a texture content/mip/streaming problem, a differing
+cbuffer-derived value means a material parameter problem.
+
+MCP: `debug_pixel` / `debug_vertex` / `debug_thread` with `mode` set to
+`summary` (default), `vars`, or `trace`.
 
 ## Build From Source
 

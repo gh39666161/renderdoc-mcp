@@ -18,8 +18,8 @@ void registerDebugTools(ToolRegistry& registry) {
              {"eventId",   {{"type", "integer"}, {"description", "Draw call event ID"}}},
              {"x",         {{"type", "integer"}, {"description", "Pixel X coordinate"}}},
              {"y",         {{"type", "integer"}, {"description", "Pixel Y coordinate"}}},
-             {"mode",      {{"type", "string"}, {"enum", {"summary", "trace"}},
-                            {"description", "summary=inputs/outputs only (default), trace=full execution"}}},
+             {"mode",      {{"type", "string"}, {"enum", {"summary", "vars", "trace"}},
+                            {"description", "summary=inputs/outputs only (default), vars=also dump final value of every shader variable (texture samples, intermediates), trace=full step-by-step execution"}}},
              {"primitive", {{"type", "integer"}, {"description", "Primitive ID (default: any)"}}}
          }},
          {"required", nlohmann::json::array({"eventId", "x", "y"})}},
@@ -28,9 +28,11 @@ void registerDebugTools(ToolRegistry& registry) {
             uint32_t eventId = args["eventId"].get<uint32_t>();
             uint32_t x = args["x"].get<uint32_t>();
             uint32_t y = args["y"].get<uint32_t>();
-            bool fullTrace = (args.value("mode", std::string("summary")) == "trace");
+            std::string mode = args.value("mode", std::string("summary"));
+            bool fullTrace = (mode == "trace");
+            bool captureVars = (mode == "vars" || mode == "trace");
             uint32_t primitive = args.value("primitive", 0xFFFFFFFFu);
-            auto result = core::debugPixel(session, eventId, x, y, fullTrace, primitive);
+            auto result = core::debugPixel(session, eventId, x, y, fullTrace, primitive, captureVars);
             return to_json(result);
         }
     });
@@ -43,7 +45,7 @@ void registerDebugTools(ToolRegistry& registry) {
          {"properties", {
              {"eventId",  {{"type", "integer"}, {"description", "Draw call event ID"}}},
              {"vertexId", {{"type", "integer"}, {"description", "Vertex index to debug"}}},
-             {"mode",     {{"type", "string"}, {"enum", {"summary", "trace"}},
+             {"mode",     {{"type", "string"}, {"enum", {"summary", "vars", "trace"}},
                            {"description", "summary (default) or trace"}}},
              {"instance", {{"type", "integer"}, {"description", "Instance index, default 0"}}},
              {"index",    {{"type", "integer"}, {"description", "Raw index buffer value for indexed draws"}}},
@@ -54,11 +56,13 @@ void registerDebugTools(ToolRegistry& registry) {
             auto& session = ctx.session;
             uint32_t eventId  = args["eventId"].get<uint32_t>();
             uint32_t vertexId = args["vertexId"].get<uint32_t>();
-            bool fullTrace = (args.value("mode", std::string("summary")) == "trace");
+            std::string mode = args.value("mode", std::string("summary"));
+            bool fullTrace = (mode == "trace");
+            bool captureVars = (mode == "vars" || mode == "trace");
             uint32_t instance = args.value("instance", 0u);
             uint32_t index    = args.value("index", 0xFFFFFFFFu);
             uint32_t view     = args.value("view", 0u);
-            auto result = core::debugVertex(session, eventId, vertexId, fullTrace, instance, index, view);
+            auto result = core::debugVertex(session, eventId, vertexId, fullTrace, instance, index, view, captureVars);
             return to_json(result);
         }
     });
@@ -76,7 +80,7 @@ void registerDebugTools(ToolRegistry& registry) {
              {"threadX", {{"type", "integer"}, {"description", "Thread X within workgroup"}}},
              {"threadY", {{"type", "integer"}, {"description", "Thread Y within workgroup"}}},
              {"threadZ", {{"type", "integer"}, {"description", "Thread Z within workgroup"}}},
-             {"mode",    {{"type", "string"}, {"enum", {"summary", "trace"}},
+             {"mode",    {{"type", "string"}, {"enum", {"summary", "vars", "trace"}},
                           {"description", "summary (default) or trace"}}}
          }},
          {"required", nlohmann::json::array({"eventId", "groupX", "groupY", "groupZ",
@@ -90,8 +94,10 @@ void registerDebugTools(ToolRegistry& registry) {
             uint32_t tx = args["threadX"].get<uint32_t>();
             uint32_t ty = args["threadY"].get<uint32_t>();
             uint32_t tz = args["threadZ"].get<uint32_t>();
-            bool fullTrace = (args.value("mode", std::string("summary")) == "trace");
-            auto result = core::debugThread(session, eventId, gx, gy, gz, tx, ty, tz, fullTrace);
+            std::string mode = args.value("mode", std::string("summary"));
+            bool fullTrace = (mode == "trace");
+            bool captureVars = (mode == "vars" || mode == "trace");
+            auto result = core::debugThread(session, eventId, gx, gy, gz, tx, ty, tz, fullTrace, captureVars);
             return to_json(result);
         }
     });
